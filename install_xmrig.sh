@@ -4,15 +4,18 @@
 sudo apt update && sudo apt upgrade -y
 
 # Instala dependências necessárias
-sudo apt install -y build-essential cmake automake libtool git libhwloc-dev libuv1-dev
+sudo apt install -y build-essential cmake automake libtool git libhwloc-dev libssl-dev libuv1-dev
 
-# Baixa o código-fonte do XMRig
+# Baixa o código-fonte do XMRig (removendo o diretório existente, se necessário)
 cd /opt
+if [ -d "xmrig" ]; then
+    sudo rm -rf xmrig
+fi
 sudo git clone https://github.com/xmrig/xmrig.git
 cd xmrig
 
 # Cria e entra no diretório de build
-mkdir build
+mkdir -p build
 cd build
 
 # Configura a compilação
