@@ -4,7 +4,7 @@
 sudo apt update && sudo apt upgrade -y
 
 # Instala dependências necessárias
-sudo apt install -y build-essential cmake automake libtool git libhwloc-dev
+sudo apt install -y build-essential cmake automake libtool git libhwloc-dev libuv1-dev
 
 # Baixa o código-fonte do XMRig
 cd /opt
