@@ -22,27 +22,25 @@ cd build
 sudo cmake ..
 sudo make -j$(nproc)
 
-# Cria um arquivo de configuração para o XMRig
-# Adiciona o nome de usuário da máquina à carteira
-USER_NAME=$(whoami)
-WALLET="45mqjub6KDy14qcSZcjjDA1kXFGu5xiBVPJKoZrMgicH1skGVVzPzVYHJR27CbyiyKDzFf89gEbUnBpXj7ViQrGgPCQTNT2"
+# Cria o arquivo de configuração para o XMRig
 POOL="xmrpool.eu:9999"
-USER_WALLET="${WALLET}+${USER_NAME}"
+WALLET="45mqjub6Kdy14qcSZcjjDA1kXFGu5xiBVPJKoZrMgicH1skGVVzPzVYHJR27CbyiyKDzFf89gEbUnBpXj7ViQrGgPCQTNT2"
 
-# Cria o arquivo de configuração
-cat > config.json <<EOF
+# Cria o arquivo de configuração em /opt/xmrig/build/config.json
+sudo cat > /opt/xmrig/build/config.json <<EOF
 {
     "autosave": true,
-    "cpu": {
-        "enabled": true,
-        "threads": 0
-    },
-    "url": "${POOL}",
-    "user": "${USER_WALLET}",
-    "pass": "x",
-    "rig-id": "${USER_NAME}",
-    "keepalive": true,
-    "nicehash": false
+    "cpu": true,
+    "opencl": false,
+    "cuda": false,
+    "pools": [
+        {
+            "url": "${POOL}",
+            "user": "${WALLET}",
+            "keepalive": true,
+            "tls": true
+        }
+    ]
 }
 EOF
 
@@ -53,7 +51,7 @@ Description=XMrig Miner
 After=network.target
 
 [Service]
-ExecStart=/opt/xmrig/build/xmrig
+ExecStart=/opt/xmrig/build/xmrig -c /opt/xmrig/build/config.json
 WorkingDirectory=/opt/xmrig/build
 User=root
 Restart=always
