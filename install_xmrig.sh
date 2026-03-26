@@ -1,36 +1,57 @@
 #!/bin/bash
-# XMRig Optimized Installer - Version 2.0
-# Script otimizado para máxima performance em mineração Monero
+# XMRig Universal Installer - MoneroOcean Optimized
+# Detecta automaticamente se é VM ou físico e ajusta otimizações
+# Version: 3.0
 
-set -e  # Para o script em caso de erro
+set -e
 
 # Cores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Configurações
-POOL="xmrpool.eu:9999"
 WALLET="45mqjub6Kdy14qcSZcjjDA1kXFGu5xiBVPJKoZrMgicH1skGVVzPzVYHJR27CbyiyKDzFf89gEbUnBpXj7ViQrGgPCQTNT2"
+POOL_PRIMARY="gulf.moneroocean.stream:10128"
+POOL_BACKUP="pool.supportxmr.com:3333"
 MINER_USER="xmrig"
 INSTALL_DIR="/opt/xmrig"
 
 echo -e "${GREEN}"
-echo "╔═══════════════════════════════════════════════════════════╗"
-echo "║     XMRig Optimized Installer - Maximum Performance      ║"
-echo "║                 Monero Mining Setup                       ║"
-echo "╚═══════════════════════════════════════════════════════════╝"
+echo "╔════════════════════════════════════════════════════════════════════╗"
+echo "║     XMRig Universal Installer - MoneroOcean Optimized             ║"
+echo "║              Auto-detection for Physical/VM                        ║"
+echo "╚════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
+
+# ============================================
+# DETECÇÃO DE AMBIENTE
+# ============================================
+
+echo -e "${BLUE}[1/15] Detectando ambiente de execução...${NC}"
+
+# Detecta se está em VM
+IS_VM=false
+if systemd-detect-virt -v 2>/dev/null | grep -qiE "vmware|kvm|virtualbox|xen|qemu"; then
+    IS_VM=true
+    echo -e "${YELLOW}  ⚠ Ambiente Virtualizado Detectado (VM)${NC}"
+    echo -e "${YELLOW}  → MSR otimizações serão ignoradas${NC}"
+    echo -e "${YELLOW}  → Prioridade de CPU ajustada${NC}"
+else
+    echo -e "${GREEN}  ✅ Ambiente Físico Detectado${NC}"
+    echo -e "${GREEN}  → Todas otimizações disponíveis${NC}"
+fi
 
 # Detecta CPU
 CPU_CORES=$(nproc)
 CPU_VENDOR=$(lscpu | grep "Vendor ID" | awk '{print $3}' 2>/dev/null || echo "Unknown")
 CPU_MODEL=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs 2>/dev/null || echo "Unknown")
-THREAD_HINT=$((CPU_CORES * 100 / 100))
+THREAD_HINT=100
 
-echo -e "${BLUE}Detectando Hardware:${NC}"
+echo -e "${BLUE}[2/15] Detectando hardware...${NC}"
 echo "  CPU Model: $CPU_MODEL"
 echo "  CPU Cores: $CPU_CORES"
 echo "  CPU Vendor: $CPU_VENDOR"
@@ -39,17 +60,27 @@ echo "  Thread Hint: ${THREAD_HINT}%"
 # Verifica RAM
 TOTAL_RAM=$(free -g | awk '/^Mem:/{print $2}')
 echo "  RAM Total: ${TOTAL_RAM}GB"
-if [ $TOTAL_RAM -lt 4 ]; then
-    echo -e "${YELLOW}  ⚠ Aviso: Mínimo recomendado 4GB para RandomX${NC}"
+
+# Otimização de huge pages baseada na RAM
+if [ $TOTAL_RAM -ge 16 ]; then
+    HUGE_PAGES=2560
+elif [ $TOTAL_RAM -ge 8 ]; then
+    HUGE_PAGES=1920
+else
+    HUGE_PAGES=1280
 fi
+echo "  Huge Pages: $HUGE_PAGES"
+
 echo ""
 
-# Atualiza o sistema
-echo -e "${GREEN}[1/12] Atualizando sistema...${NC}"
+# ============================================
+# ATUALIZAÇÃO E DEPENDÊNCIAS
+# ============================================
+
+echo -e "${GREEN}[3/15] Atualizando sistema...${NC}"
 sudo apt update && sudo apt upgrade -y
 
-# Instala dependências necessárias
-echo -e "${GREEN}[2/12] Instalando dependências...${NC}"
+echo -e "${GREEN}[4/15] Instalando dependências...${NC}"
 sudo apt install -y \
     build-essential \
     cmake \
@@ -62,10 +93,15 @@ sudo apt install -y \
     msr-tools \
     lm-sensors \
     htop \
-    curl
+    curl \
+    wget \
+    numactl
 
-# Cria usuário dedicado para mineração
-echo -e "${GREEN}[3/12] Criando usuário dedicado...${NC}"
+# ============================================
+# USUÁRIO DEDICADO
+# ============================================
+
+echo -e "${GREEN}[5/15] Criando usuário dedicado...${NC}"
 if id "$MINER_USER" &>/dev/null; then
     echo -e "${YELLOW}  Usuário $MINER_USER já existe${NC}"
 else
@@ -73,28 +109,37 @@ else
     echo -e "${GREEN}  Usuário $MINER_USER criado${NC}"
 fi
 
-# Configura MSR para otimização
-echo -e "${GREEN}[4/12] Configurando otimizações de CPU...${NC}"
-sudo modprobe msr 2>/dev/null || true
-echo "msr" | sudo tee -a /etc/modules > /dev/null 2>&1 || true
+# ============================================
+# OTIMIZAÇÕES DE CPU (APENAS FÍSICO)
+# ============================================
 
-# Otimizações específicas por fabricante
-if [[ $CPU_VENDOR == "AuthenticAMD" ]]; then
-    echo -e "${BLUE}  Aplicando otimizações para AMD Ryzen${NC}"
-    if command -v wrmsr &> /dev/null; then
-        sudo wrmsr -a 0xc0011020 0x400000000000 2>/dev/null || true
+if [ "$IS_VM" = false ]; then
+    echo -e "${GREEN}[6/15] Configurando otimizações de CPU (físico)...${NC}"
+    sudo modprobe msr 2>/dev/null || true
+    echo "msr" | sudo tee -a /etc/modules > /dev/null 2>&1 || true
+
+    if [[ $CPU_VENDOR == "AuthenticAMD" ]]; then
+        echo -e "${BLUE}  Aplicando otimizações para AMD Ryzen${NC}"
+        if command -v wrmsr &> /dev/null; then
+            sudo wrmsr -a 0xc0011020 0x400000000000 2>/dev/null || true
+        fi
+    elif [[ $CPU_VENDOR == "GenuineIntel" ]]; then
+        echo -e "${BLUE}  Aplicando otimizações para Intel${NC}"
+        if command -v wrmsr &> /dev/null; then
+            sudo wrmsr -a 0x1a4 0xf 2>/dev/null || true
+        fi
     fi
-elif [[ $CPU_VENDOR == "GenuineIntel" ]]; then
-    echo -e "${BLUE}  Aplicando otimizações para Intel${NC}"
-    if command -v wrmsr &> /dev/null; then
-        sudo wrmsr -a 0x1a4 0xf 2>/dev/null || true
-    fi
+else
+    echo -e "${YELLOW}[6/15] Pulando otimizações MSR (ambiente virtual)${NC}"
 fi
 
-# Configura Huge Pages (ESSENCIAL para RandomX)
-echo -e "${GREEN}[5/12] Configurando Huge Pages...${NC}"
-sudo sysctl -w vm.nr_hugepages=1280 2>/dev/null || true
-echo "vm.nr_hugepages=1280" | sudo tee -a /etc/sysctl.conf > /dev/null 2>&1 || true
+# ============================================
+# HUGE PAGES
+# ============================================
+
+echo -e "${GREEN}[7/15] Configurando Huge Pages...${NC}"
+sudo sysctl -w vm.nr_hugepages=$HUGE_PAGES 2>/dev/null || true
+echo "vm.nr_hugepages=$HUGE_PAGES" | sudo tee -a /etc/sysctl.conf > /dev/null 2>&1 || true
 
 # Configura limites de memória
 sudo cat > /etc/security/limits.d/xmrig.conf <<EOF 2>/dev/null || true
@@ -110,8 +155,11 @@ EOF
 # Desabilita Transparent Huge Pages
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled > /dev/null 2>&1 || true
 
-# Baixa o código-fonte do XMRig
-echo -e "${GREEN}[6/12] Baixando código fonte do XMRig...${NC}"
+# ============================================
+# COMPILAÇÃO XMRig
+# ============================================
+
+echo -e "${GREEN}[8/15] Baixando código fonte do XMRig...${NC}"
 cd /opt
 if [ -d "xmrig" ]; then
     sudo rm -rf xmrig
@@ -119,24 +167,31 @@ fi
 sudo git clone https://github.com/xmrig/xmrig.git
 cd xmrig
 
-# Compila o XMRig com otimizações
-echo -e "${GREEN}[7/12] Compilando XMRig (isso pode levar alguns minutos)...${NC}"
+echo -e "${GREEN}[9/15] Compilando XMRig (pode levar alguns minutos)...${NC}"
 mkdir -p build
 cd build
-sudo cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_MSR=ON
+
+# Compila com otimizações
+if [ "$IS_VM" = false ]; then
+    sudo cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_MSR=ON -DWITH_HWLOC=ON
+else
+    sudo cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_HWLOC=ON
+fi
 sudo make -j$(nproc)
 
-# Verifica se a compilação foi bem sucedida
 if [ -f "/opt/xmrig/build/xmrig" ]; then
-    echo -e "${GREEN}  ✅ Compilação concluída com sucesso${NC}"
+    echo -e "${GREEN}  ✅ Compilação concluída${NC}"
 else
     echo -e "${RED}  ❌ Falha na compilação${NC}"
     exit 1
 fi
 
-# Cria arquivo de configuração otimizado
-echo -e "${GREEN}[8/12] Criando arquivo de configuração...${NC}"
-sudo mkdir -p $INSTALL_DIR/build 2>/dev/null || true
+# ============================================
+# CONFIGURAÇÃO COM FALLBACK
+# ============================================
+
+echo -e "${GREEN}[10/15] Criando arquivo de configuração...${NC}"
+sudo mkdir -p $INSTALL_DIR/build
 
 sudo cat > /opt/xmrig/build/config.json <<EOF
 {
@@ -145,41 +200,69 @@ sudo cat > /opt/xmrig/build/config.json <<EOF
         "enabled": true,
         "huge-pages": true,
         "hw-aes": true,
-        "priority": null,
+        "priority": 5,
         "max-threads-hint": ${THREAD_HINT},
         "asm": true,
-        "argon2-impl": null
+        "argon2-impl": "AVX2",
+        "numa": true
     },
     "opencl": false,
     "cuda": false,
     "donate-level": 1,
     "pools": [
         {
-            "url": "${POOL}",
+            "url": "${POOL_PRIMARY}",
             "user": "${WALLET}",
-            "pass": "optimized-linux-miner",
+            "pass": "universal-miner",
             "keepalive": true,
-            "tls": true,
+            "tls": false,
+            "nicehash": false
+        },
+        {
+            "url": "${POOL_BACKUP}",
+            "user": "${WALLET}",
+            "pass": "backup-miner",
+            "keepalive": true,
+            "tls": false,
             "nicehash": false
         }
     ],
-    "print-time": 60,
-    "retries": 5,
+    "print-time": 30,
+    "retries": 10,
     "retry-pause": 5,
     "watch": true
 }
 EOF
 
-# Ajusta permissões
-echo -e "${GREEN}[9/12] Configurando permissões...${NC}"
+# ============================================
+# PERMISSÕES
+# ============================================
+
+echo -e "${GREEN}[11/15] Configurando permissões...${NC}"
 sudo chown -R $MINER_USER:$MINER_USER $INSTALL_DIR
 sudo chmod +x /opt/xmrig/build/xmrig
 
-# Cria serviço Systemd otimizado
-echo -e "${GREEN}[10/12] Criando serviço systemd...${NC}"
+# ============================================
+# SERVIÇO SYSTEMD OTIMIZADO
+# ============================================
+
+echo -e "${GREEN}[12/15] Criando serviço systemd...${NC}"
+
+# Define prioridade baseada no ambiente
+if [ "$IS_VM" = false ]; then
+    CPU_POLICY="fifo"
+    CPU_PRIORITY=99
+    NICE_LEVEL=10
+else
+    CPU_POLICY="batch"
+    CPU_PRIORITY=0
+    NICE_LEVEL=15
+fi
+
 sudo cat > /etc/systemd/system/xmrig.service <<EOF
 [Unit]
-Description=XMrig Optimized Miner
+Description=XMrig Universal Miner (MoneroOcean)
+Documentation=https://github.com/xmrig/xmrig
 After=network.target network-online.target
 Wants=network-online.target
 
@@ -195,31 +278,37 @@ StandardOutput=journal
 StandardError=journal
 LimitMEMLOCK=infinity
 LimitNOFILE=1000000
-Nice=10
-CPUSchedulingPolicy=fifo
-CPUSchedulingPriority=99
+Nice=${NICE_LEVEL}
+CPUSchedulingPolicy=${CPU_POLICY}
+CPUSchedulingPriority=${CPU_PRIORITY}
+IOSchedulingClass=best-effort
+IOSchedulingPriority=0
+OOMScoreAdjust=-500
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Cria scripts auxiliares
-echo -e "${GREEN}[11/12] Criando scripts de monitoramento...${NC}"
+# ============================================
+# SCRIPTS DE MONITORAMENTO
+# ============================================
+
+echo -e "${GREEN}[13/15] Criando scripts de monitoramento...${NC}"
 
 # Script de monitoramento
 sudo cat > /usr/local/bin/xmrig-monitor <<'EOF'
 #!/bin/bash
 while true; do
     clear
-    echo "=== XMRig Monitor ==="
+    echo "=== XMRig Universal Monitor ==="
     echo "Time: $(date)"
     echo ""
     echo "Service Status: $(systemctl is-active xmrig)"
     echo ""
-    echo "Last 10 accepted shares:"
-    journalctl -u xmrig.service --since "10 minutes ago" | grep "accepted" | tail -10
+    echo "Last 15 accepted shares:"
+    journalctl -u xmrig.service --since "15 minutes ago" | grep "accepted" | tail -15
     echo ""
-    echo "Current Hashrate (last minute):"
+    echo "Current Hashrate:"
     journalctl -u xmrig.service --since "1 minute ago" | grep "speed" | tail -1
     echo ""
     echo "CPU Usage:"
@@ -227,9 +316,6 @@ while true; do
     echo ""
     echo "Memory Usage:"
     free -h | grep "Mem:"
-    echo ""
-    echo "Temperature:"
-    sensors 2>/dev/null | grep -E "Core|Package|Tctl" | head -3 || echo "  sensors not available"
     echo ""
     echo "Press Ctrl+C to exit"
     sleep 10
@@ -257,41 +343,66 @@ EOF
 
 sudo chmod +x /usr/local/bin/xmrig-restart
 
-# Inicia o serviço
-echo -e "${GREEN}[12/12] Iniciando serviço...${NC}"
+# Script para status completo
+sudo cat > /usr/local/bin/xmrig-status <<'EOF'
+#!/bin/bash
+echo "=== XMRig Status ==="
+echo ""
+echo "Service Status:"
+systemctl status xmrig --no-pager -l
+echo ""
+echo "Last 10 accepted shares:"
+journalctl -u xmrig.service --since "30 minutes ago" | grep accepted | tail -10
+echo ""
+echo "Last 3 hashrates:"
+journalctl -u xmrig.service --since "30 minutes ago" | grep speed | tail -3
+echo ""
+echo "Total shares today:"
+journalctl -u xmrig.service --since today | grep -c accepted
+EOF
+
+sudo chmod +x /usr/local/bin/xmrig-status
+
+# ============================================
+# INICIALIZAÇÃO
+# ============================================
+
+echo -e "${GREEN}[14/15] Iniciando serviço...${NC}"
 sudo systemctl daemon-reload
 sudo systemctl enable xmrig.service
 sudo systemctl start xmrig.service
 
-# Aguarda inicialização
-sleep 3
+sleep 5
 
-# Exibe o status do serviço
+# ============================================
+# FINALIZAÇÃO
+# ============================================
+
 echo ""
-echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║              INSTALAÇÃO CONCLUÍDA COM SUCESSO!           ║${NC}"
-echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
+echo -e "${GREEN}╔════════════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║              INSTALAÇÃO CONCLUÍDA COM SUCESSO!                     ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "${YELLOW}Status do Serviço:${NC}"
-sudo systemctl status xmrig.service --no-pager -l
-echo ""
+
 echo -e "${YELLOW}Configuração Aplicada:${NC}"
-echo "  Pool: $POOL"
-echo "  Wallet: ${WALLET:0:30}..."
-echo "  CPU Threads: $CPU_CORES (${THREAD_HINT}%)"
-echo "  Huge Pages: Ativado (1280 páginas)"
-echo "  MSR Otimizações: Aplicadas para $CPU_VENDOR"
+echo "  Pool Primária: $POOL_PRIMARY"
+echo "  Pool Backup: $POOL_BACKUP"
+echo "  Wallet: ${WALLET:0:35}..."
+echo "  CPU Threads: $CPU_CORES (100%)"
+echo "  Huge Pages: $HUGE_PAGES páginas"
+echo "  Ambiente: $( [ "$IS_VM" = true ] && echo "Virtualizado" || echo "Físico" )"
 echo ""
+
 echo -e "${YELLOW}Comandos Úteis:${NC}"
-echo "  ${GREEN}xmrig-monitor${NC}   - Monitor em tempo real (atualiza a cada 10s)"
+echo "  ${GREEN}xmrig-monitor${NC}   - Monitor em tempo real"
 echo "  ${GREEN}xmrig-logs${NC}       - Ver logs em tempo real"
-echo "  ${GREEN}xmrig-restart${NC}    - Reiniciar o minerador"
-echo "  ${GREEN}systemctl status xmrig${NC} - Ver status do serviço"
-echo "  ${GREEN}systemctl stop xmrig${NC}   - Parar o minerador"
-echo "  ${GREEN}systemctl start xmrig${NC}  - Iniciar o minerador"
+echo "  ${GREEN}xmrig-status${NC}     - Status completo"
+echo "  ${GREEN}xmrig-restart${NC}    - Reiniciar minerador"
 echo ""
+
 echo -e "${YELLOW}Verificando Huge Pages:${NC}"
 cat /proc/meminfo | grep -i huge
+
 echo ""
 echo -e "${GREEN}Para ver os logs agora, execute: xmrig-logs${NC}"
 echo -e "${GREEN}Para monitorar o hashrate, execute: xmrig-monitor${NC}"
