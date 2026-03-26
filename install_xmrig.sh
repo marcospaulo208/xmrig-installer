@@ -1,7 +1,7 @@
 #!/bin/bash
 # XMRig Universal Installer - MoneroOcean Optimized
 # Detecta automaticamente se é VM ou físico e ajusta otimizações
-# Version: 3.0
+# Version: 3.1 - Com identificação por nome da máquina
 
 set -e
 
@@ -20,12 +20,29 @@ POOL_BACKUP="pool.supportxmr.com:3333"
 MINER_USER="xmrig"
 INSTALL_DIR="/opt/xmrig"
 
+# ============================================
+# PEGA O NOME DA MÁQUINA
+# ============================================
+
+# Pega o hostname e limpa (remove domínio, espaços, etc.)
+MACHINE_NAME=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "unknown-miner")
+# Remove caracteres especiais para ficar seguro
+MACHINE_NAME=$(echo "$MACHINE_NAME" | sed 's/[^a-zA-Z0-9_-]//g' | cut -c1-32)
+
+# Se estiver vazio ou muito curto, usa um padrão
+if [ -z "$MACHINE_NAME" ] || [ ${#MACHINE_NAME} -lt 2 ]; then
+    MACHINE_NAME="miner-$(cat /proc/sys/kernel/random/uuid | cut -c1-8)"
+fi
+
 echo -e "${GREEN}"
 echo "╔════════════════════════════════════════════════════════════════════╗"
 echo "║     XMRig Universal Installer - MoneroOcean Optimized             ║"
 echo "║              Auto-detection for Physical/VM                        ║"
 echo "╚════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
+
+echo -e "${CYAN}📡 Identificação da Máquina: ${MACHINE_NAME}${NC}"
+echo ""
 
 # ============================================
 # DETECÇÃO DE AMBIENTE
@@ -187,7 +204,7 @@ else
 fi
 
 # ============================================
-# CONFIGURAÇÃO COM FALLBACK
+# CONFIGURAÇÃO COM FALLBACK E NOME DA MÁQUINA
 # ============================================
 
 echo -e "${GREEN}[10/15] Criando arquivo de configuração...${NC}"
@@ -213,7 +230,8 @@ sudo cat > /opt/xmrig/build/config.json <<EOF
         {
             "url": "${POOL_PRIMARY}",
             "user": "${WALLET}",
-            "pass": "universal-miner",
+            "pass": "${MACHINE_NAME}",
+            "rig-id": "${MACHINE_NAME}",
             "keepalive": true,
             "tls": false,
             "nicehash": false
@@ -221,7 +239,8 @@ sudo cat > /opt/xmrig/build/config.json <<EOF
         {
             "url": "${POOL_BACKUP}",
             "user": "${WALLET}",
-            "pass": "backup-miner",
+            "pass": "${MACHINE_NAME}",
+            "rig-id": "${MACHINE_NAME}",
             "keepalive": true,
             "tls": false,
             "nicehash": false
@@ -261,7 +280,7 @@ fi
 
 sudo cat > /etc/systemd/system/xmrig.service <<EOF
 [Unit]
-Description=XMrig Universal Miner (MoneroOcean)
+Description=XMrig Universal Miner (MoneroOcean) - ${MACHINE_NAME}
 Documentation=https://github.com/xmrig/xmrig
 After=network.target network-online.target
 Wants=network-online.target
@@ -385,6 +404,7 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 
 echo -e "${YELLOW}Configuração Aplicada:${NC}"
+echo "  Nome da Máquina: ${MACHINE_NAME}"
 echo "  Pool Primária: $POOL_PRIMARY"
 echo "  Pool Backup: $POOL_BACKUP"
 echo "  Wallet: ${WALLET:0:35}..."
@@ -404,6 +424,7 @@ echo -e "${YELLOW}Verificando Huge Pages:${NC}"
 cat /proc/meminfo | grep -i huge
 
 echo ""
+echo -e "${GREEN}Worker identificado no MoneroOcean como: ${MACHINE_NAME}${NC}"
 echo -e "${GREEN}Para ver os logs agora, execute: xmrig-logs${NC}"
 echo -e "${GREEN}Para monitorar o hashrate, execute: xmrig-monitor${NC}"
 echo ""
