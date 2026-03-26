@@ -14,7 +14,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Configurações
-WALLET="45mqjub6Kdy14qcSZcjjDA1kXFGu5xiBVPJKoZrMgicH1skGVVzPzVYHJR27CbyiyKDzFf89gEbUnBpXj7ViQrGgPCQTNT2"
+WALLET="48ZGKQyFNHmYkWxHwxC2Wb6Ct5NLgup7vCVjx5aSGm6GRjBT7giVJdLQft7G5NGpBSV8RjWwUTZDPbSW6kfpyGB9B2RVqYv"
 POOL_PRIMARY="gulf.moneroocean.stream:10128"
 POOL_BACKUP="pool.supportxmr.com:3333"
 MINER_USER="xmrig"
